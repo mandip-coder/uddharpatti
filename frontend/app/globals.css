@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  /* Modern Trust Palette */
+  --background: #0f172a; /* Deep Midnight */
+  --surface: #1e293b; /* Slate 800 */
+  --surface-light: #334155; /* Slate 700 */
+
+  --primary: #10b981; /* Emerald 500 - Success/Action */
+  --primary-hover: #059669; /* Emerald 600 */
+
+  --secondary: #0ea5e9; /* Sky 500 - Info/Active */
+  --secondary-hover: #0284c7; /* Sky 600 */
+
+  --accent: #f59e0b; /* Amber 500 - Attention/Timer */
+  --accent-glow: rgba(245, 158, 11, 0.3);
+
+  --destructive: #ef4444; /* Red 500 - Danger */
+  --destructive-hover: #dc2626; /* Red 600 */
+
+  --text-primary: #f8fafc; /* Slate 50 */
+  --text-secondary: #94a3b8; /* Slate 400 */
+  --text-muted: #64748b; /* Slate 500 */
+
+  --border-color: #334155; /* Slate 700 */
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--background);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
