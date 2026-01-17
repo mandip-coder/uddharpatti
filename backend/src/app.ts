@@ -6,7 +6,32 @@ import morgan from 'morgan';
 const app = express();
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://teenpatti-z6zf.onrender.com"
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // allow server-to-server / curl / health checks
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.error("Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
+app.options("*", cors());
+
 app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
