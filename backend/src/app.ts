@@ -30,7 +30,6 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
-app.options("*", cors());
 
 app.use(helmet());
 app.use(morgan('dev'));
