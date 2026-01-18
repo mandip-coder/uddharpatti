@@ -1,6 +1,5 @@
-"use client";
-
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 interface ActionControlsProps {
   currentStake: number;
@@ -35,13 +34,11 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   canSideShow,
   betOptions
 }) => {
-  // Default bounds if options not yet loaded
   const minBet = betOptions?.minBet || currentStake * (isSeen ? 2 : 1);
   const maxBet = betOptions?.maxBet || walletBalance;
 
   const [betAmount, setBetAmount] = useState(minBet);
 
-  // Update local slider when options change (e.g. turn start)
   useEffect(() => {
     if (betOptions?.minBet) {
       setBetAmount(betOptions.minBet);
@@ -53,120 +50,134 @@ const ActionControls: React.FC<ActionControlsProps> = ({
   };
 
   return (
-    <div className="absolute bottom-4 left-0 right-0 max-w-2xl mx-auto px-4">
-      {/* Main Control Bar - Compact Design */}
-      <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl p-2 shadow-2xl flex items-center justify-between gap-3">
+    <motion.div
+      initial={{ y: 100, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      className="absolute bottom-6 left-0 right-0 max-w-4xl mx-auto px-6 z-50"
+    >
+      <div className="bg-gradient-to-b from-[#1a1a1a] to-black border border-white/10 rounded-[2rem] p-4 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl flex items-center justify-between gap-6">
 
         {/* Left: Utility Actions */}
-        <div className="flex flex-col gap-1.5 min-w-[80px]">
+        <div className="flex items-center gap-3 min-w-[140px]">
           {!isSeen ? (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={onSeeCards}
-              className="btn bg-slate-700 text-white hover:bg-slate-600 text-[10px] py-1.5 px-3 shadow-md rounded-lg font-bold tracking-wide uppercase transition-colors"
+              className="relative overflow-hidden group bg-gradient-to-tr from-blue-600 to-indigo-500 text-white text-[10px] font-black px-5 py-3 rounded-2xl shadow-[0_0_20px_rgba(79,70,229,0.3)] uppercase tracking-widest border-t border-white/20"
             >
-              <span className="mr-1">👁️</span> See
-            </button>
+              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="relative flex items-center gap-2">👁️ See Cards</span>
+            </motion.button>
           ) : (
-            <div className="text-[10px] text-emerald-400 font-bold bg-emerald-950/50 px-2 py-1 rounded text-center border border-emerald-500/20 uppercase tracking-wide">
-              Seen
+            <div className="bg-white/5 border border-white/10 px-5 py-3 rounded-2xl text-[10px] font-black text-emerald-400 uppercase tracking-widest text-center shadow-inner">
+              👁️ Seen
             </div>
           )}
 
           {canSideShow && (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={onSideShow}
-              className="btn bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 border border-indigo-500/30 text-[10px] py-1 px-2 rounded uppercase font-bold tracking-wide transition-colors"
+              className="bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 border border-purple-500/30 text-[10px] font-black px-4 py-3 rounded-2xl uppercase tracking-widest transition-all"
             >
               Side Show
-            </button>
+            </motion.button>
           )}
         </div>
 
-        {/* Center: Betting Mobile Console Style */}
-        <div className="flex flex-col flex-1 px-2 gap-1 border-x border-slate-700/50">
-          {/* Raise Presets & Slider */}
-          <div className="flex items-center gap-2 justify-center w-full">
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={() => setBetAmount(betOptions?.raise2x || minBet * 2)}
-                disabled={walletBalance < (betOptions?.raise2x || minBet * 2)}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded border border-emerald-500/30 text-[10px] font-bold transition-all uppercase"
-              >
-                +2x
-              </button>
-              <button
-                onClick={() => setBetAmount(betOptions?.raise4x || minBet * 4)}
-                disabled={walletBalance < (betOptions?.raise4x || minBet * 4)}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded border border-emerald-500/30 text-[10px] font-bold transition-all uppercase"
-              >
-                +4x
-              </button>
+        {/* Center: Betting Console */}
+        <div className="flex-1 px-8 border-x border-white/5 flex flex-col gap-3">
+          <div className="flex justify-between items-end">
+            <div className="flex gap-2">
+              {[2, 4].map(mult => {
+                const amt = mult === 2 ? (betOptions?.raise2x || minBet * 2) : (betOptions?.raise4x || minBet * 4);
+                const disabled = walletBalance < amt;
+                return (
+                  <motion.button
+                    key={mult}
+                    whileHover={!disabled ? { scale: 1.1 } : {}}
+                    whileTap={!disabled ? { scale: 0.9 } : {}}
+                    onClick={() => setBetAmount(amt)}
+                    disabled={disabled}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-black border transition-all
+                                ${disabled
+                        ? 'bg-white/5 border-white/5 text-white/10'
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500 hover:text-black hover:border-emerald-400'}
+                            `}
+                  >
+                    {mult}X
+                  </motion.button>
+                )
+              })}
             </div>
 
-            {/* Slider for Custom Raise */}
-            <div className="flex flex-col flex-1 gap-1">
-              <div className="flex justify-between text-[9px] text-slate-500 uppercase tracking-widest">
-                <span>Raise Amount</span>
-                <span className="text-white font-mono">₹{betAmount.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center gap-2 h-6">
-                <button onClick={() => setBetAmount(Math.max(minBet, betAmount - currentStake))} className="text-slate-500 hover:text-white text-xs">-</button>
-                <input
-                  type="range"
-                  min={minBet}
-                  max={maxBet}
-                  step={currentStake}
-                  value={betAmount}
-                  onChange={handleSliderChange}
-                  className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400"
-                />
-                <button onClick={() => setBetAmount(Math.min(maxBet, betAmount + currentStake))} className="text-slate-500 hover:text-white text-xs">+</button>
-              </div>
+            <div className="text-right">
+              <div className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-1">Current Raise</div>
+              <div className="text-xl font-mono font-black text-white leading-none">₹{betAmount.toLocaleString()}</div>
             </div>
+          </div>
+
+          <div className="relative h-2 flex items-center">
+            <div className="absolute inset-0 bg-white/5 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${((betAmount - minBet) / (maxBet - minBet)) * 100}%` }}
+                className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400"
+              />
+            </div>
+            <input
+              type="range"
+              min={minBet}
+              max={maxBet}
+              step={currentStake}
+              value={betAmount}
+              onChange={handleSliderChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+            />
           </div>
         </div>
 
         {/* Right: Primary Actions */}
-        <div className="flex items-center gap-2">
-          <button
+        <div className="flex items-center gap-3">
+          <motion.button
+            whileHover={{ backgroundColor: 'rgba(239, 68, 68, 0.2)' }}
+            whileTap={{ scale: 0.95 }}
             onClick={onPack}
-            className="px-3 py-2 bg-red-900/30 text-red-300 border border-red-800/50 rounded-lg hover:bg-red-900/50 font-bold text-xs uppercase tracking-wide transition-all"
+            className="px-6 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all"
           >
             Pack
-          </button>
+          </motion.button>
 
           {canShow && (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.95 }}
               onClick={onShow}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg shadow-lg font-bold hover:bg-amber-500 border-t border-amber-400 text-sm uppercase tracking-wide transition-all hover:-translate-y-0.5"
+              className="px-8 py-4 bg-gradient-to-t from-amber-600 to-amber-400 text-black shadow-[0_10px_30px_rgba(245,158,11,0.3)] rounded-2xl font-black text-sm uppercase tracking-widest border-t border-white/40"
             >
               Show
-            </button>
+            </motion.button>
           )}
 
-          {/* Logic: If Slider > MinBet, it's a RAISE button. Else it's CHAAL */}
-          {betAmount > minBet ? (
-            <button
-              onClick={() => onChaal(betAmount)}
-              disabled={walletBalance < betAmount}
-              className="px-5 py-2 bg-sky-600 text-white rounded-lg shadow-lg font-bold hover:bg-sky-500 border-t border-sky-400 min-w-[90px] text-sm uppercase tracking-wide transition-all hover:-translate-y-0.5"
-            >
-              Raise ₹{betAmount}
-            </button>
-          ) : (
-            <button
-              // Strict Chaal: Always execute minBet regardless of slider if button says Chaal
-              onClick={() => onChaal(minBet)}
-              disabled={walletBalance < minBet}
-              className="px-5 py-2 bg-emerald-600 text-white rounded-lg shadow-lg font-bold hover:bg-emerald-500 border-t border-emerald-400 min-w-[90px] text-sm uppercase tracking-wide transition-all hover:-translate-y-0.5"
-            >
-              Chaal ₹{minBet}
-            </button>
-          )}
+          <motion.button
+            whileHover={walletBalance >= betAmount ? { scale: 1.05, y: -2 } : {}}
+            whileTap={walletBalance >= betAmount ? { scale: 0.95 } : {}}
+            onClick={() => onChaal(betAmount > minBet ? betAmount : minBet)}
+            disabled={walletBalance < (betAmount > minBet ? betAmount : minBet)}
+            className={`px-10 py-4 shadow-2xl rounded-2xl font-black text-sm uppercase tracking-[0.2em] border-t border-white/30 transition-all min-w-[160px]
+                ${betAmount > minBet
+                ? 'bg-gradient-to-t from-sky-600 to-sky-400 text-white shadow-sky-500/30'
+                : 'bg-gradient-to-t from-emerald-600 to-emerald-400 text-white shadow-emerald-500/40'}
+                ${walletBalance < (betAmount > minBet ? betAmount : minBet) && 'opacity-30 grayscale'}
+            `}
+          >
+            {betAmount > minBet ? `Raise ₹${betAmount}` : `Chaal ₹${minBet}`}
+          </motion.button>
         </div>
-
       </div>
-    </div>
+    </motion.div>
   );
 };
 

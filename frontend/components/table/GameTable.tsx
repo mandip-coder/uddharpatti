@@ -94,47 +94,73 @@ const GameTable: React.FC<GameTableProps> = ({
   }, [gameState, turnStartTime, turnDuration]);
 
   return (
-    <div className="relative w-full h-full min-h-[600px] flex items-center justify-center overflow-hidden bg-slate-950 p-4">
+    <div className="relative w-full h-full min-h-[700px] flex items-center justify-center overflow-hidden bg-[#0a0a0a] p-8 font-sans">
+      {/* Dynamic Background Elements */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900/40 via-black to-black opacity-60"></div>
 
       {/* Room Info */}
-      <div className="absolute top-4 left-4 z-10 bg-slate-900/50 px-3 py-1 rounded-full border border-slate-700 text-xs text-slate-400">
-        Room: <span className="text-emerald-400 font-mono">{roomId}</span>
+      <div className="absolute top-6 left-6 z-20 flex flex-col gap-1">
+        <div className="bg-white/5 backdrop-blur-md px-4 py-1.5 rounded-lg border border-white/10 text-[10px] uppercase tracking-widest text-slate-400 font-semibold">
+          <span className="text-white/50">Room ID</span>
+          <span className="ml-2 text-emerald-400 font-mono">{roomId}</span>
+        </div>
       </div>
 
       <button
         onClick={onExit}
-        className="absolute top-4 right-4 z-10 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-800/50 rounded-full w-8 h-8 flex items-center justify-center transition-colors font-bold"
+        className="absolute top-6 right-6 z-20 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-xl px-4 py-2 flex items-center gap-2 transition-all duration-300 group font-bold text-sm"
         title="Exit Game"
       >
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity">Leave</span>
         ✕
       </button>
 
-      {/* Table Surface */}
-      <div className="relative w-full max-w-4xl aspect-[1.8] bg-slate-800 rounded-[200px] border-[12px] border-slate-900 shadow-[inset_0_0_100px_rgba(0,0,0,0.5)] flex items-center justify-center">
-        {/* Felt Pattern/Texture */}
-        <div className="absolute inset-4 rounded-[180px] bg-slate-800 border-2 border-slate-700/30 opacity-50"></div>
+      {/* Table Container with Outer Rail shadow */}
+      <div className="relative w-full max-w-5xl aspect-[1.9] flex items-center justify-center p-6 bg-[#1a1a1a] rounded-[240px] shadow-[0_40px_100px_rgba(0,0,0,0.8),inset_0_2px_10px_rgba(255,255,255,0.1)] border-[16px] border-[#2a2a2a]">
+
+        {/* Table Felt Surface */}
+        <div className="absolute inset-2 bg-[#0a3d2c] rounded-[220px] shadow-[inset_0_0_120px_rgba(0,0,0,0.6)] border-4 border-[#072d21]">
+          {/* Subtle Felt Texture Overlay */}
+          <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#00000022] to-[#00000044]"></div>
+        </div>
+
+        {/* Central Deck / Dealer Area */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[120%] z-0 flex flex-col items-center">
+          {/* Invisible Deck Source for Animations */}
+          <div id="deck-source" className="w-12 h-16 bg-slate-900 rounded-md border border-white/20 shadow-2xl relative">
+            <img src="/assets/cards/back.png" alt="Deck" className="w-full h-full object-cover rounded-md opacity-40 shrink-0" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-4 h-4 rounded-full border border-white/10 animate-ping"></div>
+            </div>
+          </div>
+        </div>
 
         {/* Logo in center */}
-        <div className="opacity-10 font-bold text-4xl tracking-widest text-slate-500 select-none pointer-events-none">
-          UDDHAR PATTI
+        <div className="relative z-0 opacity-10 font-black text-6xl tracking-[0.2em] text-white select-none pointer-events-none italic uppercase">
+          Uddhar Patti
         </div>
 
         {/* Pot Display */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-0">
-          <div className="bg-slate-900/80 px-4 py-1 rounded-full border border-slate-700 backdrop-blur text-emerald-400 font-mono font-bold text-lg mb-2 shadow-lg">
-            Pot: ₹{pot.toLocaleString()}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 translate-y-4 flex flex-col items-center z-10 scale-110">
+          <div className="relative group">
+            <div className="absolute -inset-4 bg-emerald-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="bg-gradient-to-b from-[#1a1a1a] to-black px-8 py-2.5 rounded-full border border-emerald-500/30 backdrop-blur-xl text-emerald-400 font-mono font-black text-2xl shadow-2xl flex items-center gap-3">
+              <span className="text-emerald-500/50 text-sm">POT</span>
+              <span>₹{pot.toLocaleString()}</span>
+            </div>
           </div>
         </div>
 
         {/* Seats */}
-        {/* Seats - Render fixed 6 positions */}
         {[0, 1, 2, 3, 4, 5].map((seatIndex) => {
-          // Find player at this seat
           const player = players.find(p => p.seatIndex === seatIndex);
           const isMySeat = seatIndex === mySeatIndex;
 
+          const visualIndex = (seatIndex - mySeatIndex + 6) % 6;
+
           return (
-            <div key={seatIndex} className={`absolute ${getVisualPosition(seatIndex)}`}>
+            <div key={seatIndex} className={`absolute z-20 ${basePositions[visualIndex]}`}>
               <Seat
                 player={player ? {
                   username: player.username,
@@ -146,6 +172,7 @@ const GameTable: React.FC<GameTableProps> = ({
                   hand: player.hand
                 } : null}
                 seatIndex={seatIndex}
+                visualIndex={visualIndex}
                 isMe={isMySeat}
                 myBalance={isMySeat ? player?.balance : undefined}
                 isTurn={gameState === 'PLAYING' && currentTurnIndex === seatIndex}

@@ -130,7 +130,7 @@ export function ShowdownModal({
                     <PlayingCard
                       suit={card.suit as any}
                       rank={card.rank}
-                      className="w-16 sm:w-20"
+                      className="w-20 h-28 sm:w-24 sm:h-32"
                     />
                   </div>
                 ))}
