@@ -25,6 +25,11 @@
   --border-color: #334155; /* Slate 700 */
 }
 
+html,
+body {
+  height: 100vh;
+}
+
 body {
   color: var(--text-primary);
   background: var(--background);
