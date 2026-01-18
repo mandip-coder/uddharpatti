@@ -26,8 +26,14 @@ export const useNotificationStore = create<NotificationState>((set) => ({
   unreadCount: 0,
 
   addNotification: (data) => set((state) => {
+    const notificationId = (data as any).notificationId || uuidv4();
+
+    // RULE 6: Deduplication Check
+    const isDuplicate = state.notifications.some(n => n.id === notificationId);
+    if (isDuplicate) return state;
+
     const newNotification: Notification = {
-      id: uuidv4(),
+      id: notificationId,
       ...data,
       time: 'Just now',
       read: false,

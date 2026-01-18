@@ -6,6 +6,7 @@ import User from '../models/User';
 import MatchHistory from '../models/MatchHistory';
 import { TABLE_TYPES, TableConfig } from '../config/tableConfig';
 import { v4 as uuidv4 } from 'uuid';
+import { guaranteedNotificationService } from '../utils/guaranteedNotificationService';
 
 // Helper to sync stats and balance
 const syncGameResultToDb = async (winnerId: string, players: any[], roomId: string, potAmount: number, tableType: string = 'STANDARD') => {
@@ -1160,20 +1161,26 @@ export const gameSocket = (io: Server, socket: Socket) => {
       }
 
       // Send invite to target user (if they're online)
-      emitIfAllowed(io, targetUserId, 'game_invite_received', {
-        inviteId: inviteResult.inviteId,
-        roomId,
-        inviterId: sender.userId,
-        inviterName: sender.username,
-        inviterAvatar: sender.avatarId,
-        tableName: game.tableConfig.name,
-        tableType: game.tableConfig.tier,
-        bootAmount: game.tableConfig.bootAmount,
-        minBalance: game.tableConfig.minBalanceToSit,
-        currentPlayers: game.players.length,
-        maxPlayers: game.tableConfig.maxPlayers,
-        expiresAt: inviteResult.invite.expiresAt
-      }, 'game.invite');
+      await guaranteedNotificationService.sendNotification(io, targetUserId, {
+        type: 'game_invite',
+        sourceUserId: sender.userId,
+        data: {
+          inviterId: sender.userId,
+          inviterName: sender.username,
+          inviterAvatar: sender.avatarId,
+          tableId: roomId,
+          betAmount: game.tableConfig.bootAmount,
+          requiresConfirmation: true, // Invites from inside a game usually require jumping
+          currentState: 'available', // Will be refined by service/target status
+          message: `${sender.username} invited you to join their table!`,
+          tableName: game.tableConfig.name,
+          tableType: game.tableConfig.tier,
+          minBalance: game.tableConfig.minBalanceToSit,
+          currentPlayers: game.players.length,
+          maxPlayers: game.tableConfig.maxPlayers,
+          expiresAt: inviteResult.invite.expiresAt
+        }
+      });
 
       socket.emit('invite_sent', {
         targetUserId,

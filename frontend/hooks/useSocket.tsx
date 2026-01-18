@@ -170,7 +170,12 @@ export const useSocket = (roomId?: string) => {
     const onMatchFound = (data: any) => setMatchResult(data);
     const onTableTypes = (types: any[]) => setTableTypes(types);
     const onMatchError = (err: any) => toast.error(err.message);
-    const onJoinRejected = (data: any) => toast.error(data.reason || 'Cannot join');
+    const onJoinRejected = (data: any) => {
+      toast.error(data.reason || 'Cannot join');
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 2000);
+    };
 
     // RULE 1 & 2: Authoritative Exit Confirmation
     const onExitConfirmed = (data?: { redirectUrl?: string }) => {
@@ -230,7 +235,14 @@ export const useSocket = (roomId?: string) => {
   // EMITTERS
   const findMatch = (typeId: string) => socket?.emit('find_match', { typeId, userId: user?.id });
   const getTableTypes = () => socket?.emit('get_table_types');
-  const sendInvite = (targetUserId: string) => roomId && socket?.emit('send_game_invite', { roomId, targetUserId });
+  const sendInvite = (targetUserId: string) => {
+    if (!roomId || !socket) return;
+    socket.emit('send_game_invite', {
+      friendId: targetUserId,
+      tableId: roomId,
+      betAmount: gameState?.pot || 100 // Use current pot or default
+    });
+  };
   const startGame = () => socket?.emit('start_game', { roomId });
 
   const placeBet = (amount: number) => {

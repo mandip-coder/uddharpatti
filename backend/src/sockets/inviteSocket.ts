@@ -46,6 +46,7 @@ export const inviteSocket = (io: Server, socket: Socket) => {
       // 3. Send notification with GUARANTEED delivery
       const delivered = await guaranteedNotificationService.sendNotification(io, data.friendId, {
         type: 'game_invite',
+        sourceUserId: currentUserId,
         data: {
           inviterId: currentUserId,
           inviterName: sender.username,
@@ -75,7 +76,7 @@ export const inviteSocket = (io: Server, socket: Socket) => {
   });
 
   // Accept game invite - with table transition logic
-  socket.on('accept_game_invite', async (data: { inviterId: string; tableId: string }) => {
+  socket.on('accept_game_invite', async (data: { inviterId: string; tableId: string; notificationId: string }) => {
     try {
       // @ts-ignore
       const currentUserId = socket.user?.id;
@@ -92,29 +93,10 @@ export const inviteSocket = (io: Server, socket: Socket) => {
 
       console.log(`[INVITE] ${user.username} accepting invite to table ${data.tableId}`);
 
-      // 1. Check if user is currently in a game
-      const currentStatus = onlineStatusManager.getUserStatus(currentUserId);
-
-      if (currentStatus?.inGame && currentStatus.roomId) {
-        console.log(`[INVITE] User is in game ${currentStatus.roomId}, will exit first`);
-
-        // Import games from gameSocket (we'll need to export it)
-        // For now, emit event to trigger graceful exit
-        socket.emit('exit_current_game_for_invite', {
-          currentRoomId: currentStatus.roomId,
-          newTableId: data.tableId,
-          inviterId: data.inviterId
-        });
-
-        // Note: The actual transition will be handled by the client
-        // calling exit_game followed by join_game
-        return;
-      }
-
-      // 2. User is not in a game, can join directly
-      // Notify inviter
+      // 2. Notify inviter
       await guaranteedNotificationService.sendNotification(io, data.inviterId, {
         type: 'invite_accepted',
+        sourceUserId: currentUserId,
         data: {
           friendId: currentUserId,
           friendName: user.username,
@@ -124,9 +106,28 @@ export const inviteSocket = (io: Server, socket: Socket) => {
         }
       });
 
-      // 3. Instruct client to join new game
+      // 3. Resolve notification
+      await guaranteedNotificationService.resolveNotification(currentUserId, data.notificationId, 'accepted');
+
+      const currentStatus = onlineStatusManager.getUserStatus(currentUserId);
+
+      if (currentStatus?.inGame && currentStatus.roomId) {
+        console.log(`[INVITE] User is in game ${currentStatus.roomId}, will exit first`);
+
+        socket.emit('exit_current_game_for_invite', {
+          currentRoomId: currentStatus.roomId,
+          newTableId: data.tableId,
+          inviterId: data.inviterId,
+          notificationId: data.notificationId
+        });
+
+        return;
+      }
+
+      // 4. Instruct client to join new game
       socket.emit('invite_accepted_join', {
         tableId: data.tableId,
+        notificationId: data.notificationId,
         message: 'Joining game...'
       });
 
@@ -135,13 +136,14 @@ export const inviteSocket = (io: Server, socket: Socket) => {
     } catch (err) {
       console.error('Error accepting invite:', err);
       socket.emit('invite_accept_failed', {
+        notificationId: data.notificationId,
         message: 'Failed to accept invite'
       });
     }
   });
 
   // Reject game invite
-  socket.on('reject_game_invite', async (data: { inviterId: string; tableId: string }) => {
+  socket.on('reject_game_invite', async (data: { inviterId: string; tableId: string; notificationId: string }) => {
     try {
       // @ts-ignore
       const currentUserId = socket.user?.id;
@@ -153,6 +155,7 @@ export const inviteSocket = (io: Server, socket: Socket) => {
       // Notify inviter
       await guaranteedNotificationService.sendNotification(io, data.inviterId, {
         type: 'invite_rejected',
+        sourceUserId: currentUserId,
         data: {
           friendId: currentUserId,
           friendName: user.username,
@@ -167,6 +170,19 @@ export const inviteSocket = (io: Server, socket: Socket) => {
 
     } catch (err) {
       console.error('Error rejecting invite:', err);
+    }
+  });
+  // Resolve notification (Dismiss/Accept/Reject byproduct)
+  socket.on('resolve_notification', async (data: { notificationId: string; status: 'accepted' | 'rejected' | 'dismissed' }) => {
+    try {
+      // @ts-ignore
+      const currentUserId = socket.user?.id;
+      if (!currentUserId) return;
+
+      await guaranteedNotificationService.resolveNotification(currentUserId, data.notificationId, data.status);
+      console.log(`[NOTIFICATION] Resolved ${data.notificationId} as ${data.status} for ${currentUserId}`);
+    } catch (err) {
+      console.error('Error resolving notification:', err);
     }
   });
 };

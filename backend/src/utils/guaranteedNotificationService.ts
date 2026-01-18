@@ -2,8 +2,10 @@ import { Server } from 'socket.io';
 import NotificationQueue from '../models/NotificationQueue';
 
 interface PendingNotification {
-  id: string;
+  id: string; // Internal memory ID
+  notificationId: string; // Unique public ID
   userId: string;
+  sourceUserId?: string;
   type: string;
   data: any;
   timestamp: Date;
@@ -25,33 +27,57 @@ class GuaranteedNotificationService {
   async sendNotification(
     io: Server,
     userId: string,
-    notification: { type: string; data: any }
+    notification: { type: string; data: any; sourceUserId?: string }
   ): Promise<boolean> {
-    console.log(`[NOTIFICATION] Attempting to send ${notification.type} to user ${userId}`);
+    const { type, data, sourceUserId } = notification;
+
+    // RULE 1: NO DUPLICATE NOTIFICATIONS
+    try {
+      const existing = await NotificationQueue.findOne({
+        userId,
+        sourceUserId,
+        type,
+        status: 'pending'
+      });
+
+      if (existing) {
+        console.log(`[NOTIFICATION] Skipping duplicate ${type} for user ${userId} from ${sourceUserId}`);
+        return false;
+      }
+    } catch (err) {
+      console.error('[NOTIFICATION] Error checking for duplicates:', err);
+    }
+
+    const notificationId = `notif_${userId.substring(0, 5)}_${Date.now()}`;
+    console.log(`[NOTIFICATION] Sending ${type} to user ${userId} (ID: ${notificationId})`);
+
+    const fullData = { ...data, notificationId };
 
     // 1. Try immediate delivery
-    const delivered = await this.tryDeliver(io, userId, notification);
+    const delivered = await this.tryDeliver(io, userId, { type, data: fullData });
 
     if (delivered) {
-      console.log(`[NOTIFICATION] ✓ Delivered ${notification.type} to ${userId} immediately`);
+      console.log(`[NOTIFICATION] ✓ Delivered ${type} to ${userId} immediately`);
       return true;
     }
 
     console.log(`[NOTIFICATION] ✗ User ${userId} not connected, queuing notification`);
 
     // 2. Queue in memory for quick retry
-    this.queueNotification(userId, notification);
+    this.queueNotification(userId, { type, data: fullData, sourceUserId, notificationId });
 
     // 3. Persist to database for reliability
     try {
       await NotificationQueue.create({
+        notificationId,
         userId,
-        type: notification.type,
-        data: notification.data,
+        sourceUserId,
+        type,
+        data: fullData,
         status: 'pending',
         attempts: 0
       });
-      console.log(`[NOTIFICATION] Persisted ${notification.type} to database for ${userId}`);
+      console.log(`[NOTIFICATION] Persisted ${type} to database for ${userId}`);
     } catch (err) {
       console.error('[NOTIFICATION] Failed to persist to database:', err);
     }
@@ -71,7 +97,10 @@ class GuaranteedNotificationService {
     const memoryPending = this.pendingQueue.get(userId) || [];
 
     for (const notif of memoryPending) {
-      const delivered = await this.tryDeliver(io, userId, notif);
+      const delivered = await this.tryDeliver(io, userId, {
+        type: notif.type,
+        data: notif.data
+      });
       if (delivered) {
         this.removeFromQueue(userId, notif.id);
       }
@@ -114,6 +143,32 @@ class GuaranteedNotificationService {
       }
     } catch (err) {
       console.error('[NOTIFICATION] Error loading pending notifications:', err);
+    }
+  }
+
+  /**
+   * Resolve a notification (Accept/Reject/Dismiss)
+   */
+  async resolveNotification(userId: string, notificationId: string, status: 'accepted' | 'rejected' | 'dismissed'): Promise<void> {
+    console.log(`[NOTIFICATION] Resolving notification ${notificationId} for user ${userId} as ${status}`);
+
+    // Remove from memory queue
+    const memoryPending = this.pendingQueue.get(userId) || [];
+    const filtered = memoryPending.filter(n => n.notificationId !== notificationId);
+    if (filtered.length === 0) {
+      this.pendingQueue.delete(userId);
+    } else {
+      this.pendingQueue.set(userId, filtered);
+    }
+
+    // Update database
+    try {
+      await NotificationQueue.updateOne(
+        { notificationId, userId },
+        { status, deliveredAt: new Date() }
+      );
+    } catch (err) {
+      console.error('[NOTIFICATION] Failed to resolve in DB:', err);
     }
   }
 
@@ -161,12 +216,17 @@ class GuaranteedNotificationService {
   /**
    * Add notification to in-memory queue
    */
-  private queueNotification(userId: string, notification: { type: string; data: any }): void {
+  private queueNotification(
+    userId: string,
+    notification: { type: string; data: any; sourceUserId?: string; notificationId: string }
+  ): void {
     const existing = this.pendingQueue.get(userId) || [];
 
     const pending: PendingNotification = {
       id: `${userId}_${notification.type}_${Date.now()}`,
+      notificationId: notification.notificationId,
       userId,
+      sourceUserId: notification.sourceUserId,
       type: notification.type,
       data: notification.data,
       timestamp: new Date(),
