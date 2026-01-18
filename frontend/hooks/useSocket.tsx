@@ -22,6 +22,8 @@ export const useSocket = (roomId?: string) => {
   const [isBetting, setIsBetting] = useState(false);
   const [sideShowRequest, setSideShowRequest] = useState<{ from: string; fromUsername: string } | null>(null);
   const [consentRequest, setConsentRequest] = useState<{ timeoutSeconds: number; timestamp: number } | null>(null);
+  const [reconnectionOffer, setReconnectionOffer] = useState<any>(null);
+  const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
 
   const hasJoinedRef = useRef(false);
 
@@ -29,24 +31,13 @@ export const useSocket = (roomId?: string) => {
     if (!socket || !isConnected || !user) {
       if (!isConnected) {
         hasJoinedRef.current = false;
+        setHasJoinedRoom(false);
       }
       return;
     }
 
-    // 1. JOIN LOGIC
-    if (roomId && !hasJoinedRef.current) {
-      hasJoinedRef.current = true;
-      console.log('[useSocket] Joining room:', roomId, 'User:', user.username);
-
-      socket.emit('join_chat', roomId);
-      socket.emit('join_game', {
-        roomId,
-        userId: user.id,
-        username: user.username,
-        balance: Number(user.walletBalance || 0),
-        avatarId: user.avatarId || 'avatar_1'
-      });
-    }
+    // REMOVED: Auto-join logic (FIX: Auto-Start Bug)
+    // Users must explicitly call joinGame() function
 
     // 2. GAME LISTENERS
     const onGameUpdate = (data: any) => {
@@ -133,7 +124,13 @@ export const useSocket = (roomId?: string) => {
     };
 
     const onShowResult = (data: any) => {
-      toast(`${data.winnerName} won the Showdown with ${data.handName}!`, { icon: '🏆' });
+      console.log('[DEBUG] show_result data:', JSON.stringify(data, null, 2));
+      // data.winner is userId, data.results has the full info
+      const winnerResult = data.results?.find((r: any) => r.playerId === data.winner);
+      console.log('[DEBUG] winnerResult:', winnerResult);
+      const winnerName = winnerResult?.username || 'Unknown';
+      const handName = winnerResult?.handName || 'Unknown Hand';
+      toast(`${winnerName} won the Showdown with ${handName}!`, { icon: '🏆' });
     };
 
     const onPlayerRemoved = (data: any) => {
@@ -177,6 +174,19 @@ export const useSocket = (roomId?: string) => {
       }, 2000);
     };
 
+    // NEW: Reconnection Offer Handler (FIX: Auto-Start Bug)
+    const onReconnectionAvailable = (data: any) => {
+      console.log('[useSocket] Reconnection offer received:', data);
+      setReconnectionOffer(data);
+    };
+
+    const onReconnectionFailed = (data: any) => {
+      console.log('[useSocket] Reconnection failed:', data.reason);
+      toast.error(data.reason || 'Reconnection failed');
+      setReconnectionOffer(null);
+      setHasJoinedRoom(false); // Reset so user sees join prompt
+    };
+
     // RULE 1 & 2: Authoritative Exit Confirmation
     const onExitConfirmed = (data?: { redirectUrl?: string }) => {
       console.log('[useSocket] Exit confirmed by backend');
@@ -205,6 +215,8 @@ export const useSocket = (roomId?: string) => {
     socket.on('table_types', onTableTypes);
     socket.on('match_error', onMatchError);
     socket.on('join_rejected', onJoinRejected);
+    socket.on('reconnection_available', onReconnectionAvailable);
+    socket.on('reconnection_failed', onReconnectionFailed);
     socket.on('exit_confirmed', onExitConfirmed);
 
     return () => {
@@ -228,6 +240,8 @@ export const useSocket = (roomId?: string) => {
       socket.off('table_types', onTableTypes);
       socket.off('match_error', onMatchError);
       socket.off('join_rejected', onJoinRejected);
+      socket.off('reconnection_available', onReconnectionAvailable);
+      socket.off('reconnection_failed', onReconnectionFailed);
       socket.off('exit_confirmed', onExitConfirmed);
     };
   }, [socket, isConnected, roomId, user?.id]);
@@ -266,6 +280,44 @@ export const useSocket = (roomId?: string) => {
   const sendMessage = (text: string) => socket?.emit('send_message', { roomId, message: text, sender: user?.username });
   const exitGame = () => socket?.emit('exit_game', { roomId, userId: user?.id });
 
+  // NEW: Explicit Join Function (FIX: Auto-Start Bug)
+  const joinGame = () => {
+    if (!socket || !user || !roomId || hasJoinedRef.current) return;
+
+    console.log('[useSocket] Explicitly joining room:', roomId);
+    hasJoinedRef.current = true;
+    setHasJoinedRoom(true);
+
+    socket.emit('join_chat', roomId);
+    socket.emit('join_game', {
+      roomId,
+      userId: user.id,
+      username: user.username,
+      balance: Number(user.walletBalance || 0),
+      avatarId: user.avatarId || 'avatar_1'
+    });
+  };
+
+  // NEW: Confirm Reconnection (FIX: Auto-Start Bug)
+  const confirmReconnection = () => {
+    if (!socket || !roomId) return;
+
+    console.log('[useSocket] Confirming reconnection to:', roomId);
+    socket.emit('confirm_reconnection', { roomId });
+    setReconnectionOffer(null);
+    setHasJoinedRoom(true);
+  };
+
+  // NEW: Decline Reconnection (FIX: Auto-Start Bug)
+  const declineReconnection = () => {
+    if (!socket || !roomId) return;
+
+    console.log('[useSocket] Declining reconnection');
+    socket.emit('decline_reconnection', { roomId });
+    setReconnectionOffer(null);
+    setHasJoinedRoom(false); // Reset so user can join fresh
+  };
+
   return {
     isConnected,
     isReconnecting,
@@ -294,6 +346,12 @@ export const useSocket = (roomId?: string) => {
     sideShowRequest, // CRITICAL: This is what SideShowModal uses
     respondToSideShow,
     consentRequest,
-    respondToConsent
+    respondToConsent,
+    // NEW: Explicit Join & Reconnection Controls (FIX: Auto-Start Bug)
+    joinGame,
+    reconnectionOffer,
+    confirmReconnection,
+    declineReconnection,
+    hasJoinedRoom
   };
 };

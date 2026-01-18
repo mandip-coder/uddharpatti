@@ -34,6 +34,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (!token || !user) {
       if (socketRef.current) {
+        // NEW: Emit logout before disconnect (FIX: Auto-Start Bug)
+        const userId = user?.id;
+        if (userId) {
+          console.log('[SOCKET_PROVIDER] Emitting logout for user:', userId);
+          socketRef.current.emit('user_logout', { userId });
+        }
+
         socketRef.current.disconnect();
         socketRef.current = null;
         setSocket(null);

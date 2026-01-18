@@ -14,6 +14,7 @@ interface Player {
   currentBet: number;
   isSeen: boolean; // Has the player looked at their cards?
   seatIndex: number; // 0-5
+  lastActivityTime?: number; // Track last action timestamp for reconnection validation
   sideShowRequest?: {
     from: string; // socketId of requester
     timestamp: number;
@@ -258,7 +259,8 @@ export class TeenPattiGame {
       balance,
       currentBet: 0,
       isSeen: false,
-      seatIndex
+      seatIndex,
+      lastActivityTime: Date.now()
     };
     this.players.push(player);
     this.userIdToSocketId.set(userId, socketId); // Track userId to socketId mapping
@@ -587,6 +589,7 @@ export class TeenPattiGame {
     player.balance -= amount;
     player.currentBet += amount;
     this.pot += amount;
+    player.lastActivityTime = Date.now(); // Track activity
 
     // Update current stake - normalize by dividing by multiplier
     const normalizedStake = amount / multiplier;
@@ -602,6 +605,7 @@ export class TeenPattiGame {
     if (!player || !player.active || player.folded) return false;
 
     player.isSeen = true;
+    player.lastActivityTime = Date.now(); // Track activity
     return true;
   }
 
@@ -784,6 +788,7 @@ export class TeenPattiGame {
 
     player.folded = true;
     player.active = false;
+    player.lastActivityTime = Date.now(); // Track activity
 
     // RULE 6: Check if only one player left
     const activePlayers = this.players.filter(p => p.active && !p.folded);

@@ -34,7 +34,13 @@ export default function GamePage() {
     respondToSideShow,
     exitGame,
     consentRequest, // Add this
-    respondToConsent // Add this
+    respondToConsent, // Add this
+    // NEW: Join & Reconnection Controls (FIX: Auto-Start Bug)
+    joinGame,
+    reconnectionOffer,
+    confirmReconnection,
+    declineReconnection,
+    hasJoinedRoom
   } = useSocket(roomId);
 
 
@@ -66,6 +72,38 @@ export default function GamePage() {
   if (isAuthLoading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-emerald-500"></div></div>;
   if (!user) { router.push('/login'); return null; }
 
+  // NEW: Reconnection Offer Prompt (FIX: Auto-Start Bug)
+  if (reconnectionOffer) {
+    return (
+      <div className="h-screen w-full bg-slate-950 flex items-center justify-center">
+        <div className="text-center max-w-md px-6">
+          <div className="text-6xl mb-6">🎮</div>
+          <h2 className="text-2xl font-bold text-slate-200 mb-3">Resume Game?</h2>
+          <p className="text-slate-400 mb-2">
+            You were in a game {Math.floor(reconnectionOffer.timeSinceDisconnect / 1000)} seconds ago.
+          </p>
+          <p className="text-slate-500 text-sm mb-6">
+            {reconnectionOffer.playerCount} player(s) still in the room
+          </p>
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={confirmReconnection}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-bold transition-colors shadow-lg"
+            >
+              Resume Game
+            </button>
+            <button
+              onClick={declineReconnection}
+              className="bg-slate-700 hover:bg-slate-600 text-white px-8 py-3 rounded-lg font-bold transition-colors"
+            >
+              Start Fresh
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // DEFENSIVE RENDERING: Connection Error
   if (connectError) {
     return (
@@ -85,9 +123,39 @@ export default function GamePage() {
     );
   }
 
-  // DEFENSIVE RENDERING: Loading State (waiting for first game_update)
-  // Only show loading if we don't have gameState yet
-  if (!gameState) {
+  // DEFENSIVE RENDERING: Loading State / Join Prompt (FIX: Auto-Start Bug)
+  // Show join prompt if user hasn't explicitly joined yet
+  if (!gameState && !hasJoinedRoom) {
+    return (
+      <div className="h-screen w-full bg-slate-950 flex items-center justify-center">
+        <div className="text-center max-w-md px-6">
+          <div className="text-6xl mb-6">🎴</div>
+          <h2 className="text-2xl font-bold text-slate-200 mb-3">Join Game?</h2>
+          <p className="text-slate-400 mb-2">
+            Room Code: <span className="text-emerald-400 font-mono text-xl">{roomId}</span>
+          </p>
+          <p className="text-slate-500 text-sm mb-6">
+            Click below to join this table
+          </p>
+          <button
+            onClick={joinGame}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-bold transition-colors shadow-lg"
+          >
+            Join Table
+          </button>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="mt-4 block mx-auto text-slate-500 hover:text-slate-400 text-sm"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading if joined but waiting for game state
+  if (!gameState && hasJoinedRoom) {
     return (
       <div className="h-screen w-full bg-slate-950 flex items-center justify-center">
         <div className="text-center">

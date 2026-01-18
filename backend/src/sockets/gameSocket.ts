@@ -249,70 +249,51 @@ export const gameSocket = (io: Server, socket: Socket) => {
 
       const existingPlayer = game.getPlayerByUserId(userId);
 
-      // RECONNECTION FLOW
+      // RECONNECTION FLOW - Intent-Based (FIX: Auto-Start Bug)
       if (existingPlayer) {
-        console.log(`Player ${username} reconnecting to room ${roomId}`);
+        console.log(`[JOIN_GAME] Player ${username} found in room ${roomId}. Checking reconnection eligibility...`);
 
-        // Clear disconnect timer if exists
-        const disconnectTimer = playerDisconnectTimers.get(userId);
-        if (disconnectTimer) {
-          clearTimeout(disconnectTimer);
-          playerDisconnectTimers.delete(userId);
-          console.log(`Cleared disconnect timer for ${username}`);
-        }
+        // Validate if this is a legitimate reconnection
+        const timeSinceLastActivity = Date.now() - (existingPlayer.lastActivityTime || 0);
+        const isRecentDisconnect = timeSinceLastActivity < 60000; // 1 minute threshold
+        const isGameActive = game.gameState === 'PLAYING';
 
-        // Handle duplicate connection (multiple tabs)
-        if (existingPlayer.socketId !== socket.id) {
-          const oldSocketId = existingPlayer.socketId;
+        console.log(`[RECONNECT_CHECK] TimeSinceActivity: ${timeSinceLastActivity}ms, IsRecent: ${isRecentDisconnect}, GameActive: ${isGameActive}`);
 
-          // Disconnect old socket
-          io.to(oldSocketId).emit('duplicate_connection', {
-            message: 'Game opened in another tab'
+        if (isRecentDisconnect && isGameActive) {
+          // LEGITIMATE RECONNECTION: Offer to resume
+          console.log(`[RECONNECT_OFFER] Offering reconnection to ${username}`);
+
+          // Clear disconnect timer if exists
+          const disconnectTimer = playerDisconnectTimers.get(userId);
+          if (disconnectTimer) {
+            clearTimeout(disconnectTimer);
+            playerDisconnectTimers.delete(userId);
+          }
+
+          // Join socket to room so they can receive events while waiting
+          await socket.join(roomId);
+          await socket.join(userId);
+
+          // Send reconnection offer (don't auto-reconnect)
+          socket.emit('reconnection_available', {
+            roomId,
+            gameState: game.gameState,
+            timeSinceDisconnect: timeSinceLastActivity,
+            playerCount: game.players.length
           });
 
-          const oldSocket = io.sockets.sockets.get(oldSocketId);
-          if (oldSocket) {
-            oldSocket.disconnect(true);
-          }
+          console.log(`[RECONNECT_OFFER] Sent reconnection offer to ${username}. Waiting for confirmation.`);
+          return; // Wait for explicit 'confirm_reconnection' event
+        } else {
+          // STALE SESSION: Remove old player, treat as fresh join
+          console.log(`[STALE_SESSION] Removing stale player ${username} from ${roomId}. Reason: ${!isRecentDisconnect ? 'Old session' : 'Game not active'}`);
 
-          console.log(`Disconnected old socket ${oldSocketId} for ${username}`);
+          // Remove stale player
+          game.removePlayer(existingPlayer.socketId);
+
+          // Continue to NEW PLAYER FLOW below (don't return)
         }
-
-        // Reconnect player with new socket ID
-        game.reconnectPlayer(userId, socket.id);
-
-        // Send full game state for restoration
-        const fullState = game.getFullGameState();
-        socket.emit('game_state_restored', fullState);
-
-        // Send private data
-        // FIX: Only send cards if player has SEEN them
-        socket.emit('your_cards', existingPlayer.isSeen ? existingPlayer.hand : []);
-        socket.emit('your_balance', existingPlayer.balance);
-
-        // Send pending side show request if exists
-        if (existingPlayer.sideShowRequest) {
-          const requester = game.players.find(p => p.socketId === existingPlayer.sideShowRequest!.from);
-          if (requester) {
-            socket.emit('side_show_request', {
-              from: requester.userId,
-              fromUsername: requester.username
-            });
-          }
-        }
-
-        // Notify room of reconnection
-        io.to(roomId).emit('player_reconnected', {
-          userId: existingPlayer.userId,
-          username: existingPlayer.username
-        });
-
-        console.log(`Player ${username} successfully reconnected to ${roomId}`);
-
-        // Update online status
-        onlineStatusManager.setUserInGame(userId, roomId, game.gameState);
-
-        return; // Exit early - reconnection complete
       }
 
       // NEW PLAYER FLOW (original logic)
@@ -441,6 +422,221 @@ export const gameSocket = (io: Server, socket: Socket) => {
 
     } catch (err) {
       console.error('Error in next_round_consent:', err);
+    }
+  });
+
+  // NEW: Explicit Reconnection Confirmation (FIX: Auto-Start Bug)
+  socket.on('confirm_reconnection', async ({ roomId }) => {
+    try {
+      // @ts-ignore
+      const userId = socket.user?.id;
+      if (!userId) return;
+
+      const game = games[roomId];
+      if (!game) {
+        socket.emit('reconnection_failed', { reason: 'Game room not found' });
+        return;
+      }
+
+      const existingPlayer = game.getPlayerByUserId(userId);
+      if (!existingPlayer) {
+        socket.emit('reconnection_failed', { reason: 'Player not found in game' });
+        return;
+      }
+
+      console.log(`[CONFIRM_RECONNECT] User ${userId} confirmed reconnection to ${roomId}`);
+
+      // Join rooms
+      await socket.join(roomId);
+      await socket.join(userId);
+
+      // Handle duplicate connection (multiple tabs)
+      if (existingPlayer.socketId !== socket.id) {
+        const oldSocketId = existingPlayer.socketId;
+
+        // Disconnect old socket
+        io.to(oldSocketId).emit('duplicate_connection', {
+          message: 'Game opened in another tab'
+        });
+
+        const oldSocket = io.sockets.sockets.get(oldSocketId);
+        if (oldSocket) {
+          oldSocket.disconnect(true);
+        }
+
+        console.log(`[CONFIRM_RECONNECT] Disconnected old socket ${oldSocketId}`);
+      }
+
+      // Reconnect player with new socket ID
+      game.reconnectPlayer(userId, socket.id);
+
+      // Send full game state for restoration
+      const fullState = game.getFullGameState();
+      socket.emit('game_state_restored', fullState);
+
+      // Send private data
+      socket.emit('your_cards', existingPlayer.isSeen ? existingPlayer.hand : []);
+      socket.emit('your_balance', existingPlayer.balance);
+
+      // Send pending side show request if exists
+      if (existingPlayer.sideShowRequest) {
+        const requester = game.players.find(p => p.socketId === existingPlayer.sideShowRequest!.from);
+        if (requester) {
+          socket.emit('side_show_request', {
+            from: requester.userId,
+            fromUsername: requester.username
+          });
+        }
+      }
+
+      // Notify room of reconnection
+      io.to(roomId).emit('player_reconnected', {
+        userId: existingPlayer.userId,
+        username: existingPlayer.username
+      });
+
+      // Update online status
+      onlineStatusManager.setUserInGame(userId, roomId, game.gameState);
+
+      console.log(`[CONFIRM_RECONNECT] ✅ Player ${existingPlayer.username} successfully reconnected to ${roomId}`);
+
+    } catch (err) {
+      console.error('Error in confirm_reconnection:', err);
+      socket.emit('reconnection_failed', { reason: 'Internal server error' });
+    }
+  });
+
+  // NEW: Decline Reconnection Handler (FIX: Auto-Start Bug)
+  socket.on('decline_reconnection', async ({ roomId }) => {
+    try {
+      // @ts-ignore
+      const userId = socket.user?.id;
+      if (!userId) return;
+
+      const game = games[roomId];
+      if (!game) return;
+
+      const existingPlayer = game.getPlayerByUserId(userId);
+      if (!existingPlayer) return;
+
+      console.log(`[DECLINE_RECONNECT] User ${userId} declined reconnection to ${roomId}. Removing old player.`);
+
+      // Use exitPlayer instead of removePlayer to handle auto-win
+      const { exitedPlayer, autoWinner, wasInRound } = game.exitPlayer(userId, false);
+
+      if (!exitedPlayer) return;
+
+      // Sync balance
+      await syncUserBalance(userId, exitedPlayer.balance);
+
+      // Leave the room
+      socket.leave(roomId);
+
+      // Notify room
+      io.to(roomId).emit('player_exited', {
+        userId: exitedPlayer.userId,
+        username: exitedPlayer.username,
+        wasInRound,
+        reason: 'declined_reconnection'
+      });
+
+      io.to(roomId).emit('game_update', game.getPublicGameState());
+
+      // Handle auto-win if triggered
+      if (autoWinner && game.roundResult) {
+        io.to(roomId).emit('round_result', {
+          winner: {
+            userId: autoWinner.userId,
+            username: autoWinner.username,
+            avatarId: autoWinner.avatarId
+          },
+          reason: game.roundResult.reason,
+          pot: game.roundResult.pot,
+          delay: game.roundEndDelay,
+          actionSourceUserId: userId,
+          playerHands: game.roundResult.playerHands
+        });
+
+        await syncGameResultToDb(autoWinner.userId, game.players, roomId, game.pot, game.tableConfig.id);
+
+        // Only start consent flow if enough players remain
+        if (game.players.length >= game.tableConfig.minPlayers) {
+          setTimeout(() => handleConsentFlow(io, roomId, game), game.roundEndDelay);
+        } else {
+          console.log(`[DECLINE_RECONNECT] Only ${game.players.length} player(s) remaining. Game reset to WAITING.`);
+          io.to(roomId).emit('game_update', game.getPublicGameState());
+        }
+      }
+
+      // Notify user they can now join fresh
+      socket.emit('reconnection_declined_success');
+
+      console.log(`[DECLINE_RECONNECT] ✅ Old player removed. User can now join fresh.`);
+
+    } catch (err) {
+      console.error('Error in decline_reconnection:', err);
+    }
+  });
+
+  // NEW: User Logout Handler (FIX: Auto-Start Bug)
+  socket.on('user_logout', async ({ userId }) => {
+    try {
+      console.log(`[USER_LOGOUT] User ${userId} logging out. Removing from all games.`);
+
+      // Remove user from ALL games
+      for (const roomId in games) {
+        const game = games[roomId];
+        const player = game.getPlayerByUserId(userId);
+
+        if (player) {
+          console.log(`[USER_LOGOUT] Removing ${userId} from game ${roomId}`);
+
+          // Exit player (voluntary=false to avoid penalties)
+          const { exitedPlayer, autoWinner } = game.exitPlayer(userId, false);
+
+          if (exitedPlayer) {
+            // Sync balance
+            await syncUserBalance(userId, exitedPlayer.balance);
+
+            // Notify room
+            io.to(roomId).emit('player_exited', {
+              userId: exitedPlayer.userId,
+              username: exitedPlayer.username,
+              reason: 'logout'
+            });
+
+            io.to(roomId).emit('game_update', game.getPublicGameState());
+
+            // Handle auto-win if triggered
+            if (autoWinner && game.roundResult) {
+              io.to(roomId).emit('round_result', {
+                winner: {
+                  userId: autoWinner.userId,
+                  username: autoWinner.username,
+                  avatarId: autoWinner.avatarId
+                },
+                reason: game.roundResult.reason,
+                pot: game.roundResult.pot,
+                delay: game.roundEndDelay,
+                actionSourceUserId: userId,
+                playerHands: game.roundResult.playerHands
+              });
+
+              await syncGameResultToDb(autoWinner.userId, game.players, roomId, game.pot, game.tableConfig.id);
+            }
+          }
+
+          socket.leave(roomId);
+        }
+      }
+
+      // Mark user as offline
+      onlineStatusManager.setUserOffline(userId);
+
+      console.log(`[USER_LOGOUT] ✅ User ${userId} removed from all games`);
+
+    } catch (err) {
+      console.error('Error in user_logout:', err);
     }
   });
 
@@ -845,7 +1041,9 @@ export const gameSocket = (io: Server, socket: Socket) => {
 
       if (!exitedPlayer) return;
 
-      console.log(`Player ${exitedPlayer.username} voluntarily exited ${roomId} (wasInRound: ${wasInRound})`);
+      console.log(`[EXIT_GAME] Player ${exitedPlayer.username} voluntarily exited ${roomId}`);
+      console.log(`[EXIT_GAME] wasInRound: ${wasInRound}, autoWinner: ${autoWinner?.username || 'none'}`);
+      console.log(`[EXIT_GAME] Remaining players: ${game.players.length}, Game state: ${game.gameState}`);
 
       // RULE 2: Backend Controls Exit (Strict)
       // 1. Sync exiting player's balance immediately
@@ -885,6 +1083,9 @@ export const gameSocket = (io: Server, socket: Socket) => {
         wasInRound
       });
 
+      // Emit game update to show current state (WAITING if only 1 player left)
+      io.to(roomId).emit('game_update', game.getPublicGameState());
+
       // Notify other players about opponent exit (if enabled)
       game.players.forEach(p => {
         if (p.userId !== userId) {
@@ -917,8 +1118,15 @@ export const gameSocket = (io: Server, socket: Socket) => {
         // SYNC WINNER BALANCE IMMEDIATELY
         await syncGameResultToDb(autoWinner.userId, game.players, roomId, game.pot, game.tableConfig.id);
 
-        // UPDATED: Start Consent Flow
-        setTimeout(() => handleConsentFlow(io, roomId, game), game.roundEndDelay);
+        // UPDATED: Only start consent flow if enough players remain
+        // If only 1 player left, game should be in WAITING state (set by exitPlayer)
+        if (game.players.length >= game.tableConfig.minPlayers) {
+          setTimeout(() => handleConsentFlow(io, roomId, game), game.roundEndDelay);
+        } else {
+          console.log(`[EXIT_GAME] Only ${game.players.length} player(s) remaining. Game reset to WAITING.`);
+          // Emit game update to show WAITING state
+          io.to(roomId).emit('game_update', game.getPublicGameState());
+        }
       }
 
       // Cancel all pending invites from this user
