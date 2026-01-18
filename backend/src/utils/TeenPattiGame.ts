@@ -1067,7 +1067,7 @@ export class TeenPattiGame {
   }
 
   // Handle player response
-  handlePlayerConsent(userId: string, isConsenting: boolean): { allReady: boolean; removedPlayerId?: string } {
+  handlePlayerConsent(userId: string, isConsenting: boolean): { allReady: boolean; removedPlayerId?: string; removedPlayerBalance?: number } {
     if (this.gameState !== 'ROUND_END') return { allReady: false };
 
     if (isConsenting) {
@@ -1080,10 +1080,11 @@ export class TeenPattiGame {
       // Remove player immediately
       const player = this.getPlayerByUserId(userId);
       if (player) {
+        const balance = player.balance;
         this.removePlayer(player.socketId);
         // Also remove from consents map so we don't wait for them (though logic checks size vs logged consents)
         this.playerConsents.delete(userId);
-        return { allReady: this.checkAllReady(), removedPlayerId: userId };
+        return { allReady: this.checkAllReady(), removedPlayerId: userId, removedPlayerBalance: balance };
       }
     }
 

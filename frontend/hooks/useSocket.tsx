@@ -172,6 +172,13 @@ export const useSocket = (roomId?: string) => {
     const onMatchError = (err: any) => toast.error(err.message);
     const onJoinRejected = (data: any) => toast.error(data.reason || 'Cannot join');
 
+    // RULE 1 & 2: Authoritative Exit Confirmation
+    const onExitConfirmed = (data?: { redirectUrl?: string }) => {
+      console.log('[useSocket] Exit confirmed by backend');
+      // Force redirection immediately
+      window.location.href = data?.redirectUrl || '/dashboard';
+    };
+
     // Register all
     socket.on('game_update', onGameUpdate);
     socket.on('game_state_restored', onGameStateRestored);
@@ -193,6 +200,7 @@ export const useSocket = (roomId?: string) => {
     socket.on('table_types', onTableTypes);
     socket.on('match_error', onMatchError);
     socket.on('join_rejected', onJoinRejected);
+    socket.on('exit_confirmed', onExitConfirmed);
 
     return () => {
       socket.off('game_update', onGameUpdate);
@@ -215,6 +223,7 @@ export const useSocket = (roomId?: string) => {
       socket.off('table_types', onTableTypes);
       socket.off('match_error', onMatchError);
       socket.off('join_rejected', onJoinRejected);
+      socket.off('exit_confirmed', onExitConfirmed);
     };
   }, [socket, isConnected, roomId, user?.id]);
 

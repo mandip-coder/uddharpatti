@@ -48,6 +48,16 @@ const syncGameResultToDb = async (winnerId: string, players: any[], roomId: stri
   }
 };
 
+// Helper: Sync single user balance to DB
+const syncUserBalance = async (userId: string, balance: number) => {
+  try {
+    await User.findByIdAndUpdate(userId, { $set: { walletBalance: balance } });
+    console.log(`[SYNC] Balance synced for user ${userId}: ₹${balance}`);
+  } catch (err) {
+    console.error(`[SYNC_ERROR] Failed to sync balance for ${userId}:`, err);
+  }
+};
+
 const games: { [roomId: string]: TeenPattiGame } = {};
 const actionTimestamps = new Map<string, number>(); // Rate limiting
 const playerDisconnectTimers = new Map<string, NodeJS.Timeout>(); // Grace period timers
@@ -393,7 +403,7 @@ export const gameSocket = (io: Server, socket: Socket) => {
   });
 
   // NEW: CONSENT HANDLER
-  socket.on('next_round_consent', ({ roomId, consent }) => {
+  socket.on('next_round_consent', async ({ roomId, consent }) => {
     try {
       const game = games[roomId];
       if (!game) return;
@@ -401,12 +411,21 @@ export const gameSocket = (io: Server, socket: Socket) => {
       const player = game.players.find(p => p.socketId === socket.id);
       if (!player) return;
 
-      const { allReady, removedPlayerId } = game.handlePlayerConsent(player.userId, consent);
+      const { allReady, removedPlayerId, removedPlayerBalance } = game.handlePlayerConsent(player.userId, consent);
 
       // Notify room about update (optional, but good for UI like "2/3 players ready")
       // io.to(roomId).emit('next_round_consent_update', { userId: player.userId, status: consent ? 'READY' : 'DENIED' });
 
       if (removedPlayerId) {
+        // Sync balance of the player who left via denial
+        if (removedPlayerBalance !== undefined) {
+          await syncUserBalance(removedPlayerId, removedPlayerBalance);
+        }
+
+        // RULE 2: Backend Controls Exit (Strict)
+        socket.leave(roomId);
+        socket.emit('exit_confirmed', { redirectUrl: '/dashboard' });
+
         io.to(roomId).emit('player_left_game', { userId: removedPlayerId }); // Legacy
         io.to(roomId).emit('game_update', game.getPublicGameState());
         // Clear status
@@ -827,6 +846,10 @@ export const gameSocket = (io: Server, socket: Socket) => {
 
       console.log(`Player ${exitedPlayer.username} voluntarily exited ${roomId} (wasInRound: ${wasInRound})`);
 
+      // RULE 2: Backend Controls Exit (Strict)
+      // 1. Sync exiting player's balance immediately
+      await syncUserBalance(userId, exitedPlayer.balance);
+
       // Clear user's game status (mark as online but not in game)
       onlineStatusManager.setUserLeftGame(userId);
 
@@ -890,13 +913,11 @@ export const gameSocket = (io: Server, socket: Socket) => {
         // Update winner balance
         io.to(autoWinner.socketId).emit('your_balance', autoWinner.balance);
 
+        // SYNC WINNER BALANCE IMMEDIATELY
+        await syncGameResultToDb(autoWinner.userId, game.players, roomId, game.pot, game.tableConfig.id);
 
         // UPDATED: Start Consent Flow
         setTimeout(() => handleConsentFlow(io, roomId, game), game.roundEndDelay);
-
-        // Sync Stats to DB
-        syncGameResultToDb(autoWinner.userId, game.players, roomId, game.pot, game.tableConfig.id);
-
       }
 
       // Cancel all pending invites from this user
@@ -915,13 +936,15 @@ export const gameSocket = (io: Server, socket: Socket) => {
 
       // Disconnect the exiting player
       socket.leave(roomId);
-      socket.emit('exit_confirmed');
 
-      // Clean up empty games
+      // RULE 1: EXIT MEANS EXIT IMMEDIATELY
+      socket.emit('exit_confirmed', { redirectUrl: '/dashboard' });
+
+      // Clean up empty games (DESTROY room when last player leaves)
       if (game.players.length === 0) {
         game.cleanup(); // Cancel timers
         delete games[roomId];
-        console.log(`Deleted empty game room ${roomId}`);
+        console.log(`[ROOM_DESTRUCTION] Deleted empty game room ${roomId}`);
       }
     } catch (err) {
       console.error('Error in exit_game:', err);
@@ -950,11 +973,14 @@ export const gameSocket = (io: Server, socket: Socket) => {
           });
 
           // Set timer to remove player after grace period
-          const timer = setTimeout(() => {
+          const timer = setTimeout(async () => {
             console.log(`Grace period expired for ${player.username}. Removing from game.`);
 
             // Mark user as offline after grace period
             onlineStatusManager.setUserOffline(player.userId);
+
+            // Sync balance of the disconnected player before removal
+            await syncUserBalance(player.userId, player.balance);
 
             // Remove player and check for auto-win
             const { autoWinner } = game.removePlayer(socket.id);
@@ -989,8 +1015,8 @@ export const gameSocket = (io: Server, socket: Socket) => {
               // Update winner balance
               io.to(autoWinner.socketId).emit('your_balance', autoWinner.balance);
 
-              // Sync Stats to DB
-              syncGameResultToDb(autoWinner.userId, game.players, roomId, game.pot, game.tableConfig.id);
+              // Sync Stats and Winner Balance to DB
+              await syncGameResultToDb(autoWinner.userId, game.players, roomId, game.pot, game.tableConfig.id);
 
 
               console.log(`Auto-win: ${autoWinner.username} wins due to player disconnect`);
@@ -1005,6 +1031,9 @@ export const gameSocket = (io: Server, socket: Socket) => {
                 username: player.username,
                 reason: 'disconnect_timeout'
               });
+
+              // Emit Game Update
+              io.to(roomId).emit('game_update', game.getPublicGameState());
             }
 
             // Clean up timer
@@ -1014,7 +1043,7 @@ export const gameSocket = (io: Server, socket: Socket) => {
             if (game.players.length === 0) {
               game.cleanup(); // Cancel game timers
               delete games[roomId];
-              console.log(`Deleted empty game room ${roomId} after disconnect timeout.`);
+              console.log(`[ROOM_DESTRUCTION] Deleted empty game room ${roomId} after disconnect timeout.`);
             }
 
           }, gracePeriod);

@@ -135,7 +135,7 @@ export default function GamePage() {
             </div>
           )}
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={exitGame}
             className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-lg font-bold transition-colors"
           >
             Exit Room
