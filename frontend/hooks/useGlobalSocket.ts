@@ -1,41 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useSocketContext } from '../context/SocketContext';
 import { useAuthStore } from './useAuthStore';
-import toast from 'react-hot-toast';
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+import { useEffect } from 'react';
 
 export const useGlobalSocket = () => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const { user, token, updateAvatar } = useAuthStore();
+  const { socket } = useSocketContext();
+  const { user, updateAvatar } = useAuthStore();
 
   useEffect(() => {
-    if (!user || !token) return;
-
-    // Connect to main namespace
-    const newSocket = io(SOCKET_URL, {
-      auth: { token }
-    });
-
-    setSocket(newSocket);
-
-    newSocket.on('connect', () => {
-      console.log('Connected to global socket', newSocket.id);
-      newSocket.emit('join_global', { userId: user.id });
-    });
+    if (!socket || !user) return;
 
     // Listen for avatar changes
-    newSocket.on('avatar_changed', (data: { userId: string; avatarId: string }) => {
+    socket.on('avatar_changed', (data: { userId: string; avatarId: string }) => {
       if (data.userId === user.id) {
         updateAvatar(data.avatarId);
       }
       window.dispatchEvent(new CustomEvent('friend_avatar_update', { detail: data }));
     });
 
+    // Handle friend status updates
+    socket.on('friend_status_update', (data: { userId: string; status: string }) => {
+      console.log(`[GLOBAL] Friend ${data.userId} is now ${data.status}`);
+      window.dispatchEvent(new CustomEvent('friend_status_update', { detail: data }));
+    });
+
     return () => {
-      newSocket.disconnect();
+      socket.off('avatar_changed');
+      socket.off('friend_status_update');
     };
-  }, [user?.id, token]); // Reconnect if user changes
+  }, [socket, user?.id]);
 
   return socket;
 };

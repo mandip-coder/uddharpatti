@@ -264,8 +264,11 @@ export class TeenPattiGame {
     this.userIdToSocketId.set(userId, socketId); // Track userId to socketId mapping
 
     // RULE 2: Auto-start when minimum players condition is met
-    // Improved logic: Check >= minPlayers to handle race conditions where multiple join quickly
-    const shouldAutoStart = this.players.length >= this.tableConfig.minPlayers && this.gameState === 'WAITING';
+    // Improved logic: Allow auto-start if in WAITING or ROUND_END (reuse room)
+    const shouldAutoStart = this.players.length >= this.tableConfig.minPlayers &&
+      (this.gameState === 'WAITING' || this.gameState === 'ROUND_END');
+
+    console.log(`[ADD_PLAYER] User: ${username}, Room: ${this.roomId}, State: ${this.gameState}, AutoStart: ${shouldAutoStart}`);
 
     return { player, autoStart: shouldAutoStart };
   }
@@ -377,8 +380,10 @@ export class TeenPattiGame {
     }
 
     // Check if we need to reset to WAITING
-    if (this.players.length < this.tableConfig.minPlayers && this.gameState !== 'ROUND_END') {
+    if (this.players.length < this.tableConfig.minPlayers) {
+      console.log(`[EXIT_PLAYER] Players dropped below minimum (${this.players.length}). Resetting room ${this.roomId} to WAITING.`);
       this.gameState = 'WAITING';
+      this.roundResult = null;
     }
 
     return { exitedPlayer: player, autoWinner, wasInRound };
@@ -397,6 +402,7 @@ export class TeenPattiGame {
     this.pot = 0;
     this.currentStake = this.tableConfig.bootAmount;
     this.raiseCount = 0;
+    this.roundResult = null; // CRITICAL: Clear previous round result
 
     // Deal cards (3 each) and collect boot
     this.players.forEach((player) => {

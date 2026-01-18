@@ -174,11 +174,13 @@ export const gameSocket = (io: Server, socket: Socket) => {
 
   // RULE 2: Auto-start when 2nd player joins / Reconnection support
   socket.on('join_game', async ({ roomId, userId, username, balance, avatarId }) => {
-    console.log(`[JOIN_GAME] Received join request - Room: ${roomId}, User: ${username} (${userId}), Balance: ${balance}`);
-
     try {
-      socket.join(roomId);
-      socket.join(userId); // Join personal room for notifications
+      console.log(`[JOIN_GAME] Received request - Room: ${roomId}, User: ${username} (${userId}), Balance: ${balance}`);
+
+      // AWAIT JOIN - Critical for ensuring room membership before broadcast
+      await socket.join(roomId);
+      await socket.join(userId); // Join personal room for notifications
+      console.log(`[JOIN_GAME] Socket ${socket.id} joined rooms: [${roomId}, ${userId}]`);
 
 
       // DEBUG: Trace Global Games Object
@@ -208,22 +210,18 @@ export const gameSocket = (io: Server, socket: Socket) => {
 
         games[roomId] = new TeenPattiGame(roomId, friendTableConfig);
         games[roomId].setEventEmitter((event, data) => {
+          console.log(`[GAME_EVENT][${roomId}] Emitting: ${event}`);
           io.to(roomId).emit(event, data);
 
           // FIX: Auto-restart for Friend Rooms too
           // UPDATED: Now uses Consent Flow
           if (event === 'game_update' && data.gameState === 'ROUND_END') {
-            // We handle this via the explicit flow triggers in action handlers (show/result)
-            // But if game ends via other means, we might need a trigger.
-            // Usually code calls startNextRound manually.
-            // We'll trust the explicit calls in action handlers for now.
-            // If we wanted to force it here:
-            // setTimeout(() => handleConsentFlow(io, roomId, games[roomId]), 0);
+            // ... (handled in show/result logic)
           }
         });
-      }
 
-      console.log(`[JOIN_GAME] Created Friend Room: ${roomId}`);
+        console.log(`[JOIN_GAME] Success: Created Friend Room: ${roomId}`);
+      }
 
 
       const game = games[roomId];
@@ -332,10 +330,14 @@ export const gameSocket = (io: Server, socket: Socket) => {
         console.error('Error notifying friends of game join:', err);
       }
 
-      // RULE 1: Send sanitized public data (no opponent balances)
-      // RULE 1: Send sanitized public data (no opponent balances)
-      // Send FULL STATE UPDATE instead of just player_joined
-      io.to(roomId).emit('game_update', game.getPublicGameState());
+      // RULE 1: Send sanitized public data
+      // CRITICAL FIX: Emit to ROOM (others) AND direct to SOCKET (self)
+      // This ensures the joiner gets the state even if the room broadcast hasn't propagated
+      const publicState = game.getPublicGameState();
+      socket.broadcast.to(roomId).emit('game_update', publicState);
+      socket.emit('game_update', publicState);
+
+      console.log(`[JOIN_GAME] Emitted initial game_update to Room: ${roomId} and Socket: ${socket.id}`);
 
       // Maintain legacy event for notification if needed, or remove if frontend is fully migrated.
       // For now, let's keep it for toast notifications but rely on game_update for state.
@@ -347,23 +349,24 @@ export const gameSocket = (io: Server, socket: Socket) => {
       // RULE 1: Send private balance only to this player
       socket.emit('your_balance', player.balance);
 
-      console.log(`User ${username} joined game room ${roomId}`);
+      console.log(`[JOIN_GAME] Finalized join for user ${username} in room ${roomId}`);
 
       // DEBUG: Check autoStart conditions
       console.log(`[DEBUG] autoStart=${autoStart}, players.length=${game.players.length}, gameState=${game.gameState}`);
 
       // RULE 2: Auto-start game if 2 players present
       if (autoStart) {
-        console.log(`[JOIN_GAME] Auto-starting game in room ${roomId} (Players: ${game.players.length})`);
+        console.log(`[JOIN_GAME][${roomId}] Conditions met for Auto-Start. Players: ${game.players.length}, State: ${game.gameState}`);
 
         // Force start the game logic
         const started = game.startGame();
 
         if (started) {
+          console.log(`[JOIN_GAME][${roomId}] ✅ Game Started! Emitting updates.`);
           // CRITICAL: Emit 'game_update' immediately to switch UI to Playing State
           const publicState = game.getPublicGameState();
           io.to(roomId).emit('game_update', publicState);
-          console.log(`[JOIN_GAME] Game started & update emitted for ${roomId}`);
+          console.log(`[JOIN_GAME] AUTO_START: Game started & update emitted for ${roomId}. State: ${publicState.gameState}`);
 
           // Legacy event for toasts
           io.to(roomId).emit('game_auto_started', {

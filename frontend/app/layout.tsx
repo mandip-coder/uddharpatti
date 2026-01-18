@@ -11,6 +11,8 @@ export const metadata: Metadata = {
   description: "Multiplayer Card Game with Debt System",
 };
 
+import { SocketProvider } from "@/context/SocketContext";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -20,9 +22,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthCheck>
-          <AppLayout>
-            {children}
-          </AppLayout>
+          <SocketProvider>
+            <AppLayout>
+              {children}
+            </AppLayout>
+          </SocketProvider>
         </AuthCheck>
       </body>
     </html>
