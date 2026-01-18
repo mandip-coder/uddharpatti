@@ -5,6 +5,7 @@ import GlobalHeader from './GlobalHeader';
 import { useAuthStore } from '@/hooks/useAuthStore';
 import InviteNotification from '../game/InviteNotification';
 import UdhaarNotificationCard from '../social/UdhaarNotificationCard';
+import MobileBottomNav from './MobileBottomNav';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,11 +26,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       />
 
       {/* Main Content */}
-      <main className="flex-1 pt-16 overflow-y-auto custom-scrollbar">
+      <main className="flex-1 pt-16 pb-20 lg:pb-4 overflow-y-auto custom-scrollbar">
         <div className="container mx-auto p-4 max-w-7xl animate-in fade-in duration-500">
           {children}
         </div>
       </main>
+
+      {/* Mobile Navigation */}
+      {user && <MobileBottomNav />}
 
       {/* Global Notification Components */}
       {user && (

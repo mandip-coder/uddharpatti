@@ -25,6 +25,10 @@ const getDebtSummary = async (userId: string) => {
  */
 export const getUserProfile = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!(req as any).user) {
+      res.status(401).json({ message: 'Not authorized' });
+      return;
+    }
     const userId = (req as any).user._id;
     const user = await User.findById(userId).select('-password');
 

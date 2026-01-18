@@ -4,6 +4,7 @@ import React from 'react';
 import Seat from './Seat';
 import ActionControls from './ActionControls';
 import ResultOverlay from './ResultOverlay';
+import toast from 'react-hot-toast';
 
 interface GameTableProps {
   gameState: 'WAITING' | 'PLAYING' | 'ROUND_END' | 'FINISHED';
@@ -152,8 +153,7 @@ const GameTable: React.FC<GameTableProps> = ({
                 onInvite={() => {
                   const inviteLink = `${window.location.origin}/game/${roomId}`;
                   navigator.clipboard.writeText(inviteLink);
-                  // Simple feedback - could be improved with a toast
-                  alert(`Room Link Copied! Share custom invite link: ${inviteLink}`);
+                  toast.success(`Room Link Copied!`);
                 }}
               />
             </div>

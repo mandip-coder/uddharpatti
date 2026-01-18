@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import DashboardHeader from '@/components/layout/DashboardHeader';
 import FriendList from '@/components/social/FriendList';
 import FriendRequests from '@/components/social/FriendRequests';
 import AddFriend from '@/components/social/AddFriend';
@@ -14,13 +13,8 @@ export default function FriendsPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 pb-20">
-      <DashboardHeader />
-
       <main className="max-w-4xl mx-auto p-4">
         <div className="flex items-center gap-2 mb-6">
-          <Link href="/dashboard" className="text-slate-400 hover:text-white transition-colors">
-            ← Back
-          </Link>
           <h1 className="text-2xl font-bold text-white">Friends & Social</h1>
         </div>
 
@@ -29,8 +23,8 @@ export default function FriendsPage() {
           <button
             onClick={() => setActiveTab('friends')}
             className={`px-4 py-2 font-medium transition-colors ${activeTab === 'friends'
-                ? 'text-violet-400 border-b-2 border-violet-400'
-                : 'text-slate-400 hover:text-white'
+              ? 'text-violet-400 border-b-2 border-violet-400'
+              : 'text-slate-400 hover:text-white'
               }`}
           >
             My Friends
@@ -38,8 +32,8 @@ export default function FriendsPage() {
           <button
             onClick={() => setActiveTab('search')}
             className={`px-4 py-2 font-medium transition-colors ${activeTab === 'search'
-                ? 'text-violet-400 border-b-2 border-violet-400'
-                : 'text-slate-400 hover:text-white'
+              ? 'text-violet-400 border-b-2 border-violet-400'
+              : 'text-slate-400 hover:text-white'
               }`}
           >
             Search Users
@@ -47,8 +41,8 @@ export default function FriendsPage() {
           <button
             onClick={() => setActiveTab('blocked')}
             className={`px-4 py-2 font-medium transition-colors ${activeTab === 'blocked'
-                ? 'text-violet-400 border-b-2 border-violet-400'
-                : 'text-slate-400 hover:text-white'
+              ? 'text-violet-400 border-b-2 border-violet-400'
+              : 'text-slate-400 hover:text-white'
               }`}
           >
             Blocked Users

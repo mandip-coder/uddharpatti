@@ -9,6 +9,8 @@ import { getAvatarAsset } from '@/utils/assets';
 import { useGlobalSocket } from '@/hooks/useGlobalSocket';
 import ChatWindow from './ChatWindow';
 import FriendProfile from './FriendProfile';
+import { useAuthStore } from '@/hooks/useAuthStore';
+import toast from 'react-hot-toast';
 
 interface Friend {
   _id: string;
@@ -19,33 +21,23 @@ interface Friend {
 }
 
 export default function FriendList() {
+  const { user } = useAuthStore();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
   const [viewingProfile, setViewingProfile] = useState<Friend | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string>('');
 
   // Initialize global socket connection
   const socket = useGlobalSocket();
 
   useEffect(() => {
     // Fetch current user ID (decode token or from api profile)
-    // For now, let's fetch profile to get ID
-    const fetchProfile = async () => {
-      try {
-        const res = await api.get('/auth/me');
-        setCurrentUserId(res.data._id);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchProfile();
-
     const fetchFriends = async () => {
       try {
         const res = await api.get('/friends');
         setFriends(res.data.friends || []);
       } catch (error) {
+        toast.error('Failed to load friends');
         console.error(error);
       } finally {
         setLoading(false);
@@ -92,16 +84,10 @@ export default function FriendList() {
     // In a real app, maybe open a modal to choose settings
     socket.emit('send_game_invite', {
       friendId,
-      tableId: 'table_' + Date.now(), // Auto-generate or reuse logic?
-      // Actually, inviting usually implies "Come join MY table".
-      // If not in game, maybe create one?
-      // For simplicity/MVP: Mock table ID or assume user is in one?
-      // Requirement: "Invite includes Table ID".
-      // If user is not in a game, maybe we can't invite?
-      // Or we create a private room.
+      tableId: 'table_' + Date.now(),
       betAmount: 100
     });
-    alert('Invite sent!');
+    toast.success('Invite sent!');
   };
 
   if (loading) return <div className="text-slate-400 text-sm">Loading friends...</div>;
@@ -149,7 +135,7 @@ export default function FriendList() {
                 variant="secondary"
                 size="sm"
                 className="flex-1 text-xs"
-                disabled={!currentUserId}
+                disabled={!user?.id}
                 onClick={() => setActiveChat(friend)}
               >
                 Chat
@@ -180,7 +166,7 @@ export default function FriendList() {
         <ChatWindow
           friendId={activeChat._id}
           friendName={activeChat.username}
-          currentUserId={currentUserId}
+          currentUserId={user?.id || ''}
           onClose={() => setActiveChat(null)}
           onViewProfile={() => setViewingProfile(activeChat)}
         />

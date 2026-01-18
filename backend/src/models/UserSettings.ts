@@ -99,7 +99,4 @@ const UserSettingsSchema: Schema<IUserSettings> = new Schema(
   }
 );
 
-// Index for faster lookups
-UserSettingsSchema.index({ userId: 1 });
-
 export default mongoose.model<IUserSettings>('UserSettings', UserSettingsSchema);

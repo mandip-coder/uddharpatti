@@ -26,8 +26,14 @@ export const protect = async (req: any, res: Response, next: NextFunction) => {
       ) as JwtPayload;
 
       // Get user from the token
-      req.user = await User.findById(decoded.id).select('-password');
+      const user = await User.findById(decoded.id).select('-password');
 
+      if (!user) {
+        res.status(401).json({ message: 'Not authorized, user not found' });
+        return;
+      }
+
+      req.user = user;
       next();
     } catch (error) {
       console.log(error);
